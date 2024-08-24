@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"flag"
 	"fmt"
 	"io"
 	"net/http"
@@ -11,10 +12,6 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/route53"
 	"github.com/aws/aws-sdk-go-v2/service/route53/types"
 )
-
-var domainName string = "home.wingu.dev"
-var zoneId string = ""
-var ttl int64 = 60
 
 func getWanIP(url string) (string, error) {
 	resp, err := http.DefaultClient.Get(url)
@@ -29,23 +26,21 @@ func getWanIP(url string) (string, error) {
 	return string(wanipBytes), nil
 }
 
-func setDNSRecord(ctx context.Context, domainName string, wanip string, ttl int64, zoneId string) error {
-	cfg, err := config.LoadDefaultConfig(ctx)
-	if err != nil {
-		return fmt.Errorf("unable to load SDK config, %v", err)
-	}
+type R53set interface {
+	ChangeResourceRecordSets(context.Context, *route53.ChangeResourceRecordSetsInput, ...func(*route53.Options)) (*route53.ChangeResourceRecordSetsOutput, error)
+}
 
-	client := route53.NewFromConfig(cfg)
-	// a struct defining all config needed for the changeresourcerecordset method
+func setDNSRecord(ctx context.Context, domainName string, wanip string, zoneId string, client R53set) error {
+	ttl := int64(300)
 	input := &route53.ChangeResourceRecordSetsInput{
 		ChangeBatch: &types.ChangeBatch{
 			Changes: []types.Change{
 				{
-					Action: types.ChangeActionCreate,
+					Action: types.ChangeActionUpsert,
 					ResourceRecordSet: &types.ResourceRecordSet{
 						Name: &domainName,
 						Type: types.RRTypeA,
-						TTL:  &ttl,
+						TTL:  aws.Int64(ttl),
 						ResourceRecords: []types.ResourceRecord{
 							{
 								Value: &wanip,
@@ -54,13 +49,14 @@ func setDNSRecord(ctx context.Context, domainName string, wanip string, ttl int6
 					},
 				},
 			},
-			Comment: aws.String("Creating an A record"),
+			Comment: aws.String("Updating the record"),
 		},
 		HostedZoneId: &zoneId,
 	}
 
-	_, err = client.ChangeResourceRecordSets(ctx, input)
+	_, err := client.ChangeResourceRecordSets(ctx, input)
 	if err != nil {
+		fmt.Printf("Error details: %+v\n", err)
 		return fmt.Errorf("failed to create DNS record, %v", err)
 	}
 
@@ -69,16 +65,38 @@ func setDNSRecord(ctx context.Context, domainName string, wanip string, ttl int6
 }
 
 func main() {
-	//
-	ctx := context.Background()
-	wanip, err := getWanIP("https://api.ipify.org")
-	if err != nil {
-		fmt.Println("Error:", err)
+	domainName := flag.String("domain", "", "Domain name to update")
+	zoneId := flag.String("zone", "", "Route53 Hosted Zone ID")
+
+	flag.Parse()
+
+	if *domainName == "" || *zoneId == "" {
+		fmt.Println("Error: domain and zone flags are required")
+		flag.Usage()
 		return
 	}
-	err = setDNSRecord(ctx, domainName, wanip, ttl, zoneId)
+
+	ctx := context.Background()
+	cfg, err := config.LoadDefaultConfig(ctx,
+		config.WithRegion("us-east-1"),
+	)
+	if err != nil {
+		fmt.Println("Error loading AWS config:", err)
+		return
+	}
+
+	r53Client := route53.NewFromConfig(cfg)
+	wanip, err := getWanIP("https://api.ipify.org")
+	if err != nil {
+		fmt.Println("Error getting WAN IP:", err)
+		return
+	}
+
+	err = setDNSRecord(ctx, *domainName, wanip, *zoneId, r53Client)
 	if err != nil {
 		fmt.Println("Error creating DNS record:", err)
+		return
 	}
-	// fmt.Println("WAN IP:", wanip)
+
+	fmt.Println("DNS record updated successfully. New IP:", wanip)
 }
