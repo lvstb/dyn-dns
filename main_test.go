@@ -1,33 +1,24 @@
 package main
 
 import (
-	"context"
+	"net/http"
+	"net/http/httptest"
 	"testing"
-	"yourproject/mocks"
-
-	"github.com/aws/aws-sdk-go-v2/service/route53"
-	"github.com/golang/mock/gomock"
-	"github.com/stretchr/testify/assert"
 )
 
-func TestSetDNSRecord(t *testing.T) {
-	ctrl := gomock.NewController(t)
-	defer ctrl.Finish()
+func TestGetWanIP(t *testing.T) {
+	// Mock server
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte("192.168.1.1"))
+	}))
+	defer server.Close()
 
-	mockRoute53Client := mocks.NewMockRoute53API(ctrl)
-
-	// define your test inputs
-	domainName := "example.com"
-	wanip := "192.0.2.0"
-	ttl := int64(300)
-	zoneId := "Z2K1234ABCDEFGHIJKLMNOP"
-
-	// setup expectations
-	mockRoute53Client.EXPECT().ChangeResourceRecordSets(gomock.Any(), gomock.Any()).Return(&route53.ChangeResourceRecordSetsOutput{}, nil)
-
-	// run the function
-	err := setDNSRecord(context.Background(), domainName, wanip, ttl, zoneId)
-
-	// assert no error
-	assert.NoError(t, err)
+	// Test
+	ip, err := getWanIP(server.URL)
+	if err != nil {
+		t.Fatalf("Expected no error, got %v", err)
+	}
+	if ip != "192.168.1.1" {
+		t.Errorf("Expected IP 192.168.1.1, got %s", ip)
+	}
 }

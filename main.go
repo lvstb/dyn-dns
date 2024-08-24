@@ -3,7 +3,7 @@ package main
 import (
 	"context"
 	"fmt"
-	"io/ioutil"
+	"io"
 	"net/http"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
@@ -16,18 +16,17 @@ var domainName string = "home.wingu.dev"
 var zoneId string = ""
 var ttl int64 = 60
 
-func getWanIP() (wanip string, err error) {
-	resp, err := http.Get("https://api.ipify.org")
+func getWanIP(url string) (string, error) {
+	resp, err := http.DefaultClient.Get(url)
 	if err != nil {
 		return "", err
 	}
 	defer resp.Body.Close()
-	wanipBytes, err := ioutil.ReadAll(resp.Body)
+	wanipBytes, err := io.ReadAll(resp.Body)
 	if err != nil {
 		return "", err
 	}
-	wanip = string(wanipBytes)
-	return
+	return string(wanipBytes), nil
 }
 
 func setDNSRecord(ctx context.Context, domainName string, wanip string, ttl int64, zoneId string) error {
@@ -72,7 +71,7 @@ func setDNSRecord(ctx context.Context, domainName string, wanip string, ttl int6
 func main() {
 	//
 	ctx := context.Background()
-	wanip, err := getWanIP()
+	wanip, err := getWanIP("https://api.ipify.org")
 	if err != nil {
 		fmt.Println("Error:", err)
 		return
