@@ -1,3 +1,5 @@
+[![goreleaser](https://github.com/lvstb/dyn-dns/actions/workflows/gobuild-action.yaml/badge.svg)](https://github.com/lvstb/dyn-dns/actions/workflows/gobuild-action.yaml)
+
 # Dynamic DNS Updater for Route53
 
 This project is a Go application that updates DNS records in Amazon Route53 based on the current WAN IP address. It's useful for maintaining a dynamic DNS setup when your public IP address changes frequently.
